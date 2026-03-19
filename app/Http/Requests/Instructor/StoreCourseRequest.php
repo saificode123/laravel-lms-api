@@ -5,6 +5,7 @@ namespace App\Http\Requests\Instructor;
 use App\Enums\CourseStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 
 class StoreCourseRequest extends FormRequest
@@ -14,9 +15,8 @@ class StoreCourseRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        // For Phase 1, we allow it. 
-        // Later, we will restrict this to: return auth()->user()->role_id === 2; (Instructor)
-        return true; 
+        // Check if user is authenticated and has instructor role (role_id = 2)
+        return Auth::check() && Auth::user()?->role_id === 2;
     }
 
     /**
@@ -26,15 +26,15 @@ class StoreCourseRequest extends FormRequest
     {
         return [
             'title'       => ['required', 'string', 'max:255'],
-            
+
             // 1. UNIQUE CHECK: Ensure the generated slug doesn't already exist in the 'courses' table
             'slug'        => ['required', 'string', 'max:255', 'unique:courses,slug'],
-            
+
             'description' => ['nullable', 'string'],
-            
+
             // 2. FILE VALIDATION: If an instructor uploads a thumbnail, ensure it's actually a secure image under 2MB
             'thumbnail'   => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
-            
+
             // 3. ENUM VALIDATION: Use the Enum class we created earlier for strict type safety
             'status'      => ['nullable', Rule::enum(CourseStatus::class)],
         ];

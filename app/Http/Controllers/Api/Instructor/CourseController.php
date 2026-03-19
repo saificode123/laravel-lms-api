@@ -8,6 +8,7 @@ use App\Http\Requests\Instructor\StoreCourseRequest;
 use App\Http\Resources\CourseResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -20,10 +21,7 @@ class CourseController extends Controller
     {
         // 1. PAGINATION: Never use ->get() on resources that can grow infinitely. 
         // ->paginate(10) ensures the database only loads 10 courses into memory at a time.
-        $courses = Course::where('instructor_id', 1) // Hardcoded until Auth is set up
-            ->latest()
-            ->with(['instructor', 'sections.lessons'])
-            ->paginate(10);
+        $courses = Course::where('instructor_id', Auth::id())->latest()->paginate(10);
 
         return CourseResource::collection($courses);
     }
@@ -39,7 +37,7 @@ class CourseController extends Controller
             $course = DB::transaction(function () use ($request) {
 
                 $validatedData = $request->validated();
-                $validatedData['instructor_id'] = 1; // Hardcoded until Auth is set up
+                $validatedData['instructor_id'] = Auth::id();
 
                 // 3. FILE UPLOAD HANDLING: Check if a thumbnail was uploaded and store it securely
                 if ($request->hasFile('thumbnail')) {
@@ -76,7 +74,7 @@ class CourseController extends Controller
     public function show(Course $course): CourseResource|JsonResponse
     {
         // 6. SECURITY: Ensure the logged-in instructor actually owns this course
-        if ($course->instructor_id !== 1) { // Hardcoded 1 for now
+        if ($course->instructor_id !== Auth::id()) {
             return response()->json(['message' => 'Unauthorized access.'], 403);
         }
 
