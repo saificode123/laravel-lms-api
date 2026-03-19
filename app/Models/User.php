@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Laravel\Sanctum\HasApiTokens;
+use App\Models\Course;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
@@ -48,5 +49,13 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Get the courses created by this user (if instructor).
+     */
+    public function courses()
+    {
+        return $this->hasMany(Course::class, 'instructor_id');
     }
 }

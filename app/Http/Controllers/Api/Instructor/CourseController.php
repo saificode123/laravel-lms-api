@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Http\Requests\Instructor\StoreCourseRequest;
 use App\Http\Resources\CourseResource;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -82,5 +83,57 @@ class CourseController extends Controller
         $course->load(['instructor', 'sections.lessons']);
 
         return new CourseResource($course);
+    }
+
+    /**
+     * Update the course curriculum (sections and lessons).
+     */
+    public function updateCurriculum(Request $request, Course $course): JsonResponse
+    {
+        // SECURITY: Ensure the logged-in instructor actually owns this course
+        if ($course->instructor_id !== Auth::id()) {
+            return response()->json(['message' => 'Unauthorized access.'], 403);
+        }
+
+        try {
+            DB::transaction(function () use ($request, $course) {
+                // Delete existing sections and lessons
+                $course->sections()->delete();
+
+                // Create new sections and lessons from request
+                $sections = $request->input('sections', []);
+
+                foreach ($sections as $sIndex => $sectionData) {
+                    $section = $course->sections()->create([
+                        'title' => $sectionData['title'],
+                        'order_index' => $sIndex + 1,
+                    ]);
+
+                    $lessons = $sectionData['lessons'] ?? [];
+                    foreach ($lessons as $lIndex => $lessonData) {
+                        $section->lessons()->create([
+                            'title' => $lessonData['title'],
+                            'video_url' => $lessonData['video_url'] ?? null,
+                            'order_index' => $lIndex + 1,
+                        ]);
+                    }
+                }
+            });
+
+            $course->load(['sections.lessons']);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Curriculum updated successfully.',
+                'data' => new CourseResource($course)
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Curriculum update failed: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An error occurred while updating the curriculum.',
+            ], 500);
+        }
     }
 }

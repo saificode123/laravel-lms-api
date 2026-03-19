@@ -34,6 +34,9 @@ Route::prefix('v1')->group(function () {
 
             // All course endpoints are now locked behind Sanctum!
             Route::apiResource('courses', CourseController::class);
+
+            // Curriculum update route
+            Route::put('courses/{course}/curriculum', [CourseController::class, 'updateCurriculum']);
         });
 
         // 2. STUDENT ROUTES (For later)
