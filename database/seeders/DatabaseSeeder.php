@@ -3,23 +3,26 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Create the base roles
+        DB::table('roles')->insert([
+            ['id' => 1, 'name' => 'admin'],
+            ['id' => 2, 'name' => 'instructor'],
+            ['id' => 3, 'name' => 'student'],
+        ]);
 
+        // Create your dummy instructor (ID 1)
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'id' => 1,
+            'name' => 'Instructor Saifi',
+            'email' => 'instructor@lms.com',
+            'role_id' => 2,
         ]);
     }
 }
