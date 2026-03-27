@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # -----------------------------------------------------------
+  # 1. The Nginx Load Balancer (The Traffic Cop)
+  # -----------------------------------------------------------
+  load_balancer:
+    image: nginx:alpine
+    container_name: lms_load_balancer
+    ports:
+      - "8000:80"
+    volumes:
+      # We will create this config file next. It tells Nginx how to route traffic.
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./:/var/www
+    depends_on:
+      - app
+    networks:
+      - lms-network
+
+  # -----------------------------------------------------------
+  # 2. The Laravel APIs (The Workers)
+  # -----------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      # Mounts your local code into the container so you don't have to rebuild on every code change
+      - ./:/var/www
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=db       # Points to the 'db' service below
+      - DB_PORT=3306
+      - DB_DATABASE=lms_lite
+      - DB_USERNAME=sail
+      - DB_PASSWORD=password
+      - REDIS_HOST=redis # Points to the 'redis' service below
+      - REDIS_PORT=6379
+    deploy:
+      # THIS IS THE MAGIC LINE: It tells Docker to spin up 3 identical instances of your API
+      replicas: 3
+    networks:
+      - lms-network
+
+  # -----------------------------------------------------------
+  # 3. The MySQL Database (The Single Source of Truth)
+  # -----------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: lms_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: lms_lite
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_USER: sail
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      # Saves your database data permanently so it survives container restarts
+      - dbdata:/var/lib/mysql
+    networks:
+      - lms-network
+
+  # -----------------------------------------------------------
+  # 4. The Redis Memory Store (For Phases 3 & 4)
+  # -----------------------------------------------------------
+  redis:
+    image: redis:alpine
+    container_name: lms_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - lms-network
+
+# -----------------------------------------------------------
+# Volumes & Networks
+# -----------------------------------------------------------
+networks:
+  lms-network:
+    driver: bridge
+
+volumes:
+  dbdata:
+  redisdata:
