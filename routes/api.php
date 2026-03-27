@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Instructor\CourseController;
+use App\Http\Controllers\Api\Student\ProgressController; // <-- 1. IMPORT THE NEW CONTROLLER
 
 /*
 |--------------------------------------------------------------------------
@@ -43,7 +44,12 @@ Route::prefix('v1')->group(function () {
             Route::put('courses/{course}/curriculum', [CourseController::class, 'updateCurriculum']);
         });
 
-        // 2. STUDENT ROUTES (For later)
-        // Route::prefix('student')->name('student.')->group(function () { ... });
+        // 2. STUDENT ROUTES
+        Route::prefix('student')->name('student.')->group(function () {
+            
+            // Phase 4: Asynchronous Queue Endpoint for tracking video progress
+            Route::post('/progress/complete', [ProgressController::class, 'completeLesson']);
+            
+        });
     });
 });
