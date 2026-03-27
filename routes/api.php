@@ -18,6 +18,10 @@ Route::prefix('v1')->group(function () {
     // ==========================================
     Route::post('/login', [AuthController::class, 'login']);
 
+    // Public course viewing endpoint (for students)
+    // This is the endpoint that 5,000 students would hit when loading the same course page
+    Route::get('/courses/{course}', [CourseController::class, 'showPublic']);
+
 
     // ==========================================
     // SECURE ROUTES (Requires valid API Token)

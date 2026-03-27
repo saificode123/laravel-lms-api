@@ -12,17 +12,27 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache; // <-- 1. IMPORT THE CACHE FACADE
+use App\Enums\CourseStatus;
 
 class CourseController extends Controller
 {
     /**
      * Fetch a paginated list of courses for the instructor.
      */
-    public function index(): AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
-        // 1. PAGINATION: Never use ->get() on resources that can grow infinitely. 
-        // ->paginate(10) ensures the database only loads 10 courses into memory at a time.
-        $courses = Course::where('instructor_id', Auth::id())->latest()->paginate(10);
+        $instructorId = Auth::id();
+        $page = $request->get('page', 1); // Get current page for the cache key
+
+        // 2. READ-THROUGH CACHE WITH TAGS
+        // We tag this cache with the instructor's ID. If they fetch page 1, it saves to Redis for 1 hour.
+        $courses = Cache::tags(['courses', "instructor_{$instructorId}"])
+            ->remember("courses_page_{$page}", now()->addHours(1), function () use ($instructorId) {
+
+                // This closure ONLY runs if the data is NOT in Redis.
+                return Course::where('instructor_id', $instructorId)->latest()->paginate(10);
+            });
 
         return CourseResource::collection($courses);
     }
@@ -49,7 +59,11 @@ class CourseController extends Controller
                 return Course::create($validatedData);
             });
 
-            // 4. STANDARDIZED RESPONSE: Always return a consistent JSON structure
+            // 3. CACHE INVALIDATION
+            // The instructor just created a new course. Their cached 'index' list is now outdated.
+            // We instantly flush all caches tagged with their ID so the new course appears on their dashboard.
+            Cache::tags(["instructor_" . Auth::id()])->flush();
+
             $course->load(['instructor', 'sections.lessons']);
 
             return response()->json([
@@ -58,8 +72,6 @@ class CourseController extends Controller
                 'data' => new CourseResource($course)
             ], 201);
         } catch (\Exception $e) {
-            // 5. ERROR LOGGING: Log the actual error for you to debug later, 
-            // but return a safe, generic message to the frontend so you don't leak database info.
             Log::error('Course creation failed: ' . $e->getMessage());
 
             return response()->json([
@@ -79,10 +91,14 @@ class CourseController extends Controller
             return response()->json(['message' => 'Unauthorized access.'], 403);
         }
 
-        // 7. EAGER LOADING: Load the sections and lessons here so the Resource can format them
-        $course->load(['instructor', 'sections.lessons']);
+        // 4. CACHE HEAVY RELATIONSHIPS
+        // Eager loading sections and lessons is a heavy DB query. Let's cache this specific course for 24 hours.
+        $courseData = Cache::tags(['courses', "course_{$course->id}"])
+            ->remember("course_details_{$course->id}", now()->addHours(24), function () use ($course) {
+                return $course->load(['instructor', 'sections.lessons']);
+            });
 
-        return new CourseResource($course);
+        return new CourseResource($courseData);
     }
 
     /**
@@ -120,6 +136,12 @@ class CourseController extends Controller
                 }
             });
 
+            // 5. TARGETED INVALIDATION
+            // The curriculum changed. We must wipe this specific course's cache so students see the new videos immediately.
+            // Also flush the instructor's course list cache to reflect updated lesson counts.
+            Cache::tags(["course_{$course->id}", "instructor_{$course->instructor_id}"])->flush();
+
+            // Return fresh data
             $course->load(['sections.lessons']);
 
             return response()->json([
@@ -135,5 +157,28 @@ class CourseController extends Controller
                 'message' => 'An error occurred while updating the curriculum.',
             ], 500);
         }
+    }
+
+    /**
+     * Public endpoint for students to view a course (no authentication required).
+     * This is the endpoint that 5,000 students would hit when loading the same course page.
+     */
+    public function showPublic(Course $course): CourseResource
+    {
+        // Only allow viewing of published courses
+        if ($course->status->value !== 'published') {
+            // Or alternatively: if ($course->status !== CourseStatus::PUBLISHED) {
+            abort(404, 'Course not found or not yet published.');
+        }
+        // CACHE HEAVY RELATIONSHIPS
+        // This is the key caching scenario from Phase 3:
+        // First student loads -> fetches from MySQL -> saves to Redis
+        // Remaining 4,999 students -> served from Redis memory in milliseconds
+        $courseData = Cache::tags(['courses', "course_{$course->id}"])
+            ->remember("public_course_{$course->id}", now()->addHours(24), function () use ($course) {
+                return $course->load(['instructor', 'sections.lessons']);
+            });
+
+        return new CourseResource($courseData);
     }
 }
